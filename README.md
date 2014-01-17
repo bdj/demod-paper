@@ -1,4 +1,0 @@
-demod-paper
-===========
-
-Demodularization Paper
