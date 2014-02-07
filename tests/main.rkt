@@ -1,6 +1,7 @@
 #lang racket/base
 (require racket/path
-	 compiler/demodularizer/main)
+	 compiler/demodularizer/main
+	 "test.rkt")
 
 (define (rkt->zo-path path)
   (let ([path-string (path->string path)])
@@ -33,6 +34,7 @@
 				gc-toplevel))))))))))
 
 (module+ main
-  (run-demod "none" (lambda (x) x)))
+  (run-demod "none" (lambda (x) x))
+  (run-demod "test" demod-test))
 
 
