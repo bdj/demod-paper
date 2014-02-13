@@ -1,3 +1,12 @@
+#lang racket/base
+(require racket/match
+	 racket/set
+	 compiler/zo-structs
+	 "zo-util.rkt")
+
+(provide gc)
+
+#|
 this strategy uses the const? and ready? flags of toplevels to determine
 whether a toplevel is needed.
 
@@ -8,3 +17,9 @@ we can safely prune the other expressions (as it is apparent they must not
 alter any of them) and toplevels.
 
 if there is a non-const? within the set, fail (keep everything).
+|#
+
+(define (gc zo)
+  (match zo
+    [(compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice forms))
+     zo]))

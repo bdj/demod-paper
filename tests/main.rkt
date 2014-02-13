@@ -1,7 +1,6 @@
 #lang racket/base
 (require racket/path
-	 compiler/demodularizer/main
-	 "test.rkt")
+	 compiler/demodularizer/main)
 
 (define (rkt->zo-path path)
   (let ([path-string (path->string path)])
@@ -19,6 +18,7 @@
   (if (directory-exists? method-name)
     (printf "directory \"~a\" already exists; skipping\n" method-name)
     (begin
+      (printf "running strategy \"~a\"...\n" method-name)
       (make-directory method-name)
       (for ([suite-name (in-list (directory-list "src"))])
 	(let ([suite-path (build-path method-name suite-name)])
@@ -29,12 +29,24 @@
 	      (for ([test-filename (in-list (directory-list (build-path "src" suite-name)))])
 		(when (rkt-path? test-filename)
 		  (printf "processing \"~a\"\n" (build-path "src" suite-name test-filename))
-		  (demodularize (build-path "src" suite-name test-filename)
-				(build-path method-name suite-name (rkt->zo-path test-filename))
-				gc-toplevel))))))))))
+		  (parameterize ([compile-context-preservation-enabled #t])
+		    (demodularize (build-path "src" suite-name test-filename)
+				  (build-path method-name suite-name (rkt->zo-path test-filename))
+				  gc-toplevel)))))))))))
 
 (module+ main
-  (run-demod "none" (lambda (x) x))
-  (run-demod "test" demod-test))
+  (require (prefix-in test: "test.rkt")
+	   (prefix-in flow: "flow.rkt")
+	   (prefix-in 0cfa: "0cfa.rkt")
+	   (prefix-in const: "const.rkt"))
+
+  (define none:gc (lambda (zo) zo))
+
+
+  (run-demod "none" none:gc)
+  (run-demod "test" test:gc)
+  (run-demod "flow" flow:gc)
+  (run-demod "0cfa" 0cfa:gc)
+  (run-demod "const" const:gc))
 
 

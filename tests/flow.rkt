@@ -3,7 +3,7 @@
 	 racket/set
 	 compiler/zo-structs)
 
-(provide flow)
+(provide gc)
 
 (define (foldl. f ys . xs)
   (match ys
@@ -122,7 +122,7 @@
     (values uses is-changed-by)))
 
 
-(define (flow zo)
+(define (gc zo)
   (match zo
     [(compilation-top mld (prefix nl tls stxs) code)
      (let-values ([(defined-at uses is-changed-by)
