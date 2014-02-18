@@ -5,7 +5,6 @@
 
 (provide gc)
 
-
 (define (foldl. f ys . xs)
   (match ys
     [(list)
@@ -14,6 +13,15 @@
      (call-with-values
        (lambda () (apply f y xs))
        (lambda xs (apply foldl. f ys xs)))]))
+
+(define (transitive-closure seed relation)
+  (let ([empty-set (set-clear seed)])
+    (define (inner x seen)
+      (if (set-member? seen x)
+	seen
+	(let ([seen (set-add seen x)])
+	  (foldl inner seen (set->list (hash-ref relation x empty-set))))))
+    (foldl inner empty-set (set->list seed))))
 
 (define current-toplevel-pos (make-parameter '(root)))
 
@@ -113,38 +121,39 @@
   (let-values ([(seen uses is-changed-by) (inner zo (seteq) uses is-changed-by)])
     (values uses is-changed-by)))
 
-(define should-kill? #f)
 
 (define (gc zo)
-  #;(if should-kill?
-      (error 'demod-test "only running once")
-      (set! should-kill? #t))
   (match zo
     [(compilation-top mld (prefix nl tls stxs) code)
-     (printf "max-let-depth: ~a\n" mld)
-     (printf "num-lifts: ~a\n" nl)
-     #;(printf "toplevels not define-values\n")
-     #;(for ([i (in-naturals)]
-	   [tl (in-list tls)])
-       (printf "~a\t~a\n" i tl))
-     #;(printf "stxs: ~a\n" stxs)
-     (let-values ([(uses is-changed-by)
-		   (foldl. toplevel-dependencies (splice-forms code) (hasheqv) (hasheqv))])
-       (let ([W (lambda (f)
-		  (let ([seen (make-hasheqv)])
-		    (lambda (v)
-		      (unless (hash-has-key? seen v)
-			(hash-set! seen v #t)
-			(f v)))))])
-	 (let ([show (lambda (verb map)
-		       (letrec ([show-inner (W (lambda (key)
-					       (for ([val (in-set (hash-ref map key (seteqv)))])
-						 (printf "~a ~a ~a\n" key verb val)
-						 (show-inner val))))])
-			 (show-inner 'root)))])
-	   (show "uses" uses)
-	   (show "is changed by" is-changed-by))))])
-  zo)
+     (let-values ([(defined-at uses is-changed-by)
+		   (for/fold ([defined-at (hasheqv)]
+			      [uses (hasheqv)]
+			      [is-changed-by (hasheqv)])
+		       ([form (in-list (splice-forms code))]
+			[i (in-naturals)])
+		     (let-values ([(uses is-changed-by) (toplevel-dependencies form uses is-changed-by)])
+		       (let ([defined-at (match form
+					   [(def-values ids rhs)
+					    (foldl (lambda (pos defined-at)
+						     (hash-set defined-at pos i))
+						   defined-at
+						   (map toplevel-pos ids))]
+					   [_
+					    (hash-update defined-at 'root (lambda (s) (set-add s i)) (seteqv))])])
+			 (values defined-at uses is-changed-by))))])
+	   (let ([used (transitive-closure (hash-ref uses 'root (seteqv)) uses)]
+		 [changers (transitive-closure (hash-ref is-changed-by 'root (seteqv)) is-changed-by)])
+	     (if (set-empty? changers)
+	       (begin
+		 (displayln (for/fold ([toplevel-indices (hash-ref defined-at 'root (seteqv))])
+				([used-toplevel (in-set used)])
+			      (if (hash-has-key? defined-at used-toplevel)
+				(set-add toplevel-indices (hash-ref defined-at used-toplevel))
+				toplevel-indices)))
+		 zo)
+	       (begin
+		 (displayln "some toplevel changed; not removing anything")
+		 zo))))]))
 
 #;(define (demod-test zo)
   (match zo
