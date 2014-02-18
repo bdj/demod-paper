@@ -2,7 +2,7 @@
 (require racket/list
 	 racket/match
 	 compiler/zo-structs
-	 "zo-util.rkt")
+	 "util.rkt")
 
 (provide gc)
 
@@ -11,9 +11,15 @@
     (lambda ignore
       (begin0 i	(set! i (add1 i))))))
 
+(define (localref-lookup id env)
+  (match-let ([(localref unbox? pos clear? other-clears? type) id])
+    (localref unbox? (list-ref env pos) clear? other-clears? type)))
 
+(define (toplevel-lookup id env)
+  (match-let ([(toplevel depth pos const? ready?) id])
+    (toplevel 0 (list-ref (list-ref env depth) pos) const? ready?)))
 
-(define (recover-names zo)
+(define (recover-names zo prefix)
   (define ((inner inner) zo env)
     (match zo
       [(or (primval _)
@@ -40,17 +46,17 @@
       [(closure code gen-id)
        (closure (inner code env) gen-id)]
       [(def-values ids rhs)
-       (def-values ids (inner rhs env))]
+       (def-values (map (lambda (id) (toplevel-lookup id env)) ids) (inner rhs env))]
       [(install-value count pos boxes? rhs body)
        (install-value count pos boxes?
 		      (inner rhs env)
 		      (inner body env))]
       [(lam name flags num-params param-types rest? closure-map
 	    closure-types toplevel-map max-let-depth body)
-       (let ([params (build-list (+ num-params (if rest? 1 0)) fresh-variable)]
-	     [captus (build-list (vector-length closure-map) fresh-variable)])
+       (let ([captured (map (lambda (i) (list-ref env i)) (vector->list closure-map))]
+	     [params   (build-list (+ num-params (if rest? 1 0)) fresh-variable)])
 	 (lam name flags num-params param-types rest? closure-map closure-types
-	      toplevel-map max-let-depth (inner body (append params captus env))))]
+	      toplevel-map max-let-depth (inner body (append captured params env))))]
       [(let-one rhs body type unused?)
        (let ([env (cons (fresh-variable) env)])
 	 (let-one (inner rhs env)
@@ -62,12 +68,12 @@
       [(let-void count boxes? body)
        (let ([env (append (build-list count fresh-variable) env)])
 	 (let-void count boxes? (inner body env)))]
-      [(localref unbox? pos clear? other-clears? type)
-       (localref unbox? (list-ref env pos) clear? other-clears? type)]
+      [(? localref? id)
+       (localref-lookup id env)]
       [(seq forms)
        (seq (map (lambda (form) (inner form env)) forms))]
-      [(toplevel _ pos const? ready?)
-       (toplevel 0 pos const? ready?)]
+      [(? toplevel? id)
+       (toplevel-lookup id env)]
       [(topsyntax _ pos midpt)
        (topsyntax 0 pos midpt)]
       [(varref toplevel dummy)
@@ -77,7 +83,7 @@
        (with-cont-mark (inner key env)
 		       (inner val env)
 		       (inner body env))]))
-  (zo-map inner zo empty))
+  (zo-map inner zo (list prefix)))
 
 ; the pos field of a localref is the name of the variable. of course, it must be an exact-nonnegative-integer? to
 ; meet the localref struct contract.;
@@ -86,4 +92,8 @@
 (define (gc zo)
   (match zo
     [(compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice forms))
-     (compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (map recover-names forms)))]))
+     (let ([prefix-map (append (for/list ([id (in-list toplevels)]) (fresh-variable))
+			       stxs
+			       (if (empty? stxs) (list) (list 'stxs-bucket))
+			       (build-list num-lifts fresh-variable))])
+       (compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (map (lambda (form) (recover-names form prefix-map)) forms))))]))
