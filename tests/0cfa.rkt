@@ -17,7 +17,7 @@
 
 (define (toplevel-lookup id env)
   (match-let ([(toplevel depth pos const? ready?) id])
-    (toplevel 0 (list-ref (list-ref env depth) pos) const? ready?)))
+    (toplevel depth (list-ref (list-ref env depth) pos) const? ready?)))
 
 (define (recover-names zo prefix)
   (define ((inner inner) zo env)
@@ -74,8 +74,8 @@
        (seq (map (lambda (form) (inner form env)) forms))]
       [(? toplevel? id)
        (toplevel-lookup id env)]
-      [(topsyntax _ pos midpt)
-       (topsyntax 0 pos midpt)]
+      [(topsyntax depth pos midpt)
+       (topsyntax depth pos midpt)]
       [(varref toplevel dummy)
        (varref (inner toplevel env)
 	       (inner dummy env))]
@@ -85,15 +85,18 @@
 		       (inner body env))]))
   (zo-map inner zo (list prefix)))
 
-; the pos field of a localref is the name of the variable. of course, it must be an exact-nonnegative-integer? to
-; meet the localref struct contract.;
-; the toplevel is kept as is and the depth of toplevel references is changed to 0.
+(struct state (exp tl-env env sto kon) #:transparent)
+
+(define (inject exp prefix)
+  (state exp (hasheqv) (hasheqv) (hasheqv) 0))
+
 
 (define (gc zo)
   (match zo
     [(compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice forms))
-     (let ([prefix-map (append (for/list ([id (in-list toplevels)]) (fresh-variable))
-			       stxs
-			       (if (empty? stxs) (list) (list 'stxs-bucket))
-			       (build-list num-lifts fresh-variable))])
+     (let ([prefix (append (for/list ([id (in-list toplevels)]) (fresh-variable))
+			   stxs
+			   (if (empty? stxs) (list) (list 'stxs-bucket))
+			   (build-list num-lifts fresh-variable))])
+       (inject (map (lambda (form) (recover-names form prefix)) forms) prefix)
        (compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (map (lambda (form) (recover-names form prefix-map)) forms))))]))

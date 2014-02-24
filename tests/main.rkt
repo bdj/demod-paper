@@ -35,18 +35,18 @@
 				  gc-toplevel)))))))))))
 
 (module+ main
-  (require (prefix-in test: "test.rkt")
-	   (prefix-in flow: "flow.rkt")
+  (require #;(prefix-in test: "test.rkt")
+	   #;(prefix-in flow: "flow.rkt")
 	   (prefix-in 0cfa: "0cfa.rkt")
-	   (prefix-in const: "const.rkt"))
+	   #;(prefix-in const: "const.rkt"))
 
   (define none:gc (lambda (zo) zo))
 
 
   (run-demod "none" none:gc)
-  (run-demod "test" test:gc)
-  (run-demod "flow" flow:gc)
+  #;(run-demod "test" test:gc)
+  #;(run-demod "flow" flow:gc)
   (run-demod "0cfa" 0cfa:gc)
-  (run-demod "const" const:gc))
+  #;(run-demod "const" const:gc))
 
 
