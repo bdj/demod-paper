@@ -43,3 +43,11 @@ concatenating all modules of the program (possibly handling naming conflicts as
 well). In a language with macros, the tool must statically discover all of the
 runtime code program by tracing through imports and including runtime code that
 is referenced by expanded macros.
+
+The downside of demodularization is that even simple modular programs become
+very large if they use standard libraries. It would be possible to carefully
+craft imports and exports such that demodularized programs contain exactly the
+code that will run, but then module abstraction becomes leaky and
+impractical. To make demodularization useful on large programs, we couple it
+with dead-code elimination to make the resulting programs practical for
+distribution and tractable for optimization.
