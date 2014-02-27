@@ -37,6 +37,7 @@
 (module+ main
   (require #;(prefix-in test: "test.rkt")
 	   #;(prefix-in flow: "flow.rkt")
+           (prefix-in pure: "pure.rkt")
 	   (prefix-in 0cfa: "0cfa.rkt")
 	   #;(prefix-in const: "const.rkt"))
 
@@ -46,6 +47,7 @@
   (run-demod "none" none:gc)
   #;(run-demod "test" test:gc)
   #;(run-demod "flow" flow:gc)
+  (run-demod "pure" pure:gc)
   (run-demod "0cfa" 0cfa:gc)
   #;(run-demod "const" const:gc))
 

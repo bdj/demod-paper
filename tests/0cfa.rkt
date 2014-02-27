@@ -90,6 +90,19 @@
 (define (inject exp prefix)
   (state exp (hasheqv) (hasheqv) (hasheqv) 0))
 
+; the toplevel definition values are known exactly
+; the flow sets of the values need to be built up
+
+; we have a flow set for each variable in the program
+
+
+; we should be able to determine locally whether a parameter is used as a function
+; we should also be able to determine whether a toplevel is passed as an argument
+
+; strategy:
+
+
+
 
 (define (gc zo)
   (match zo
@@ -99,4 +112,4 @@
 			   (if (empty? stxs) (list) (list 'stxs-bucket))
 			   (build-list num-lifts fresh-variable))])
        (inject (map (lambda (form) (recover-names form prefix)) forms) prefix)
-       (compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (map (lambda (form) (recover-names form prefix-map)) forms))))]))
+       (compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (map (lambda (form) (recover-names form prefix)) forms))))]))
