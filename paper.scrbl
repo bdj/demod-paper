@@ -71,6 +71,30 @@ program becomes XXX KB after dead-code elimination.
 
 @section{Dead-code Elimination}
 
+After demodularization, a program is essentially a prefix--a mutable array with a slot for each variable defined at the top level--and a sequence of top-level forms.
+These forms may be [racket]require[] forms which introduce bindings from a portion of Racket's kernel language, [racket]def-values[] forms which update slots in the prefix, and expressions which are wrapped in a [racket]print-values[] by the compiler.
+
+The bytecode language distinguishes between top-level and local references and assignments.
+
+Within our test suite, 75% of top-level forms are devoted to the definition of a single identifier by a simple expression, such as a lambda expression, syntactic value, or a primitive value reference.
+
+subsection elimination strategies
+
+Based on the observation that 75% of top-level forms define a single identifier by a simple expression--an expression that won't diverge or exhibit any other side effects--and the fact that references to top-level values are explicit, we calculate the transive closure of top-level forms related by top-level reference and seeded by complex (as opposed to simple) expressions.
+This strategy is sound...
+
+too conservative?
+higher-order control flow problem
+
+alternative strategy using purity analysis
+augmenting the simple expressions with known simple forms such as the application of a primitive value to simple expressions
+or the obvious extension that the application of pure primitive values is assumed to be free of side effects and so the evaluation of
+- a simple expression is side-effect free
+- the application of a pure primitive value to side-effect-free argument expressions is side-effect free
+this probably covers a vast majority of the top-level definitions
+
+we should also consider code size as well as the proportion of top-level definitions eliminated.
+
 @section{Implementation}
 
 @section{Results}
