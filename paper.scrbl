@@ -5,7 +5,10 @@
 
 @doi{}
 
-@authorinfo["Kimball Germaine" 
+@authorinfo["Kimball Germane" 
+	    "University of Utah" 
+            ""]
+@authorinfo["Matthew Might" 
 	    "University of Utah" 
             ""]
 @authorinfo["Blake Johnson" 
