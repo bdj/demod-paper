@@ -1,4 +1,5 @@
 #lang scribble/sigplan
+@require[scribble/manual]
 
 @title{Enabling Optimizations through Demodularization}
 
@@ -18,7 +19,8 @@
 
 Programmers should not have to sacrifice the software engineering goals of
 modular design and good abstractions for performance.  Instead, their tools
-should make running a well-designed program as efficient as possible.
+should make running a well-designed program as efficient as a program without
+abstractions.
 
 Many languages provide features for creating modular programs which enable
 separate compilation and module reuse.  Some languages provide expressive macro
@@ -30,24 +32,43 @@ have the same meaning independent of module compilation order.  A phased module
 system, like the one described by Flatt [XXX] for Racket, is a way to allow
 both separately compiled modules and expressive macros in a language.
 
-Modular programs are difficult to optimize because the compiler has little to
-no information about values that come from other modules when compiling a
-module in isolation.  To facilitate optimization, the compiler can compute
-extra information about module exports [XXX], selectively inline imports [XXX],
-or do additional optimizations while linking compiled modules [XXX]. 
+Separately compiled modules are difficult to optimize because the compiler has
+limited information about imported values. Existing solutions for optimizing
+separately compiled modules range from generating extra information about
+imports and exports [XXX] to linking all the modules together and then
+optimizing [XXX].
 
-Our solution for enabling optimizations on modular programs is to remove
-modules altogether through a process called demodularization. In a language
-where all code is runtime code, a tool can demodularize a program by simply
-concatenating all modules of the program (possibly handling naming conflicts as
-well). In a language with macros, the tool must statically discover all of the
-runtime code program by tracing through imports and including runtime code that
-is referenced by expanded macros.
+Our solution, which we call demodularization, lies on the linking end of the
+continuum. We combine all necessary separately compiled modules into a single
+module, thus providing the whole program for analysis and
+optimization. Discovering all necessary modules in a phased module system
+requires analyzing imports and exports across phases.
 
-The downside of demodularization is that even simple modular programs become
-very large if they use standard libraries. It would be possible to carefully
-craft imports and exports such that demodularized programs contain exactly the
-code that will run, but then module abstraction becomes leaky and
-impractical. To make demodularization useful on large programs, we couple it
-with dead-code elimination to make the resulting programs practical for
-distribution and tractable for optimization.
+After combining a set of modules into a single program, the result can be quite
+large. For example, a simple "Hello, World" program in Racket become a XXX MB
+program after demodularization. We do a dead-code elimination pass on the
+resulting program to make analysis and optimization more tractable. Our example
+program becomes XXX KB after dead-code elimination.
+
+@section{An Example}
+
+@codeblock{
+  #lang racket/base
+  (require "queue.rkt")
+  (with-queue (1 2 3 4 5 6)
+    (enqueue 4)
+    (displayln (dequeue))
+    (displayln (dequeue)))
+}
+
+@section{Phased Module System}
+
+
+@section{Demodularization}
+
+@section{Dead-code Elimination}
+
+@section{Implementation}
+
+@section{Results}
+
