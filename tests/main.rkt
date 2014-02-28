@@ -14,25 +14,29 @@
     (and extension
 	 (bytes=? extension #"rkt"))))
 
-(define (run-demod method-name gc-toplevel)
-  (if (directory-exists? method-name)
-    (printf "directory \"~a\" already exists; skipping\n" method-name)
+(define (call-with-new-directory path f)
+  (if (directory-exists? path)
+    (printf "directory \"~a\" already exists; skipping\n" path)
     (begin
-      (printf "running strategy \"~a\"...\n" method-name)
-      (make-directory method-name)
-      (for ([suite-name (in-list (directory-list "src"))])
-	(let ([suite-path (build-path method-name suite-name)])
-	  (if (directory-exists? suite-path)
-	    (printf "directory \"~a\" already exists; skipping\n" suite-path)
-	    (begin
-	      (make-directory suite-path)
-	      (for ([test-filename (in-list (directory-list (build-path "src" suite-name)))])
-		(when (rkt-path? test-filename)
-		  (printf "processing \"~a\"\n" (build-path "src" suite-name test-filename))
-		  (parameterize ([compile-context-preservation-enabled #t])
-		    (demodularize (build-path "src" suite-name test-filename)
-				  (build-path method-name suite-name (rkt->zo-path test-filename))
-				  gc-toplevel)))))))))))
+      (make-directory path)
+      (f path))))
+
+(define (run-demod method-name gc-toplevel)
+  (call-with-new-directory
+   method-name
+   (lambda (method-path)
+     (for ([suite-name (in-list (directory-list "src"))])
+       (call-with-new-directory
+	(build-path method-name suite-name)
+	(lambda (suite-path)
+	  (for ([test-filename (in-list (directory-list (build-path "src" suite-name)))])
+	    (when (rkt-path? test-filename)
+	      (let ([test-filepath (build-path "src" suite-name test-filename)])
+		(printf "processing \"~a\"\n" test-filepath)
+		(parameterize ([compile-context-preservation-enabled #t])
+		  (demodularize test-filepath
+				(build-path suite-path (rkt->zo-path test-filename))
+				gc-toplevel)))))))))))
 
 (module+ main
   (require #;(prefix-in test: "test.rkt")
@@ -49,8 +53,8 @@
   #;(run-demod "test" test:gc)
   #;(run-demod "flow" flow:gc)
   (run-demod "reach" reach:gc)
-  (run-demod "pure" pure:gc)
-  (run-demod "0cfa" 0cfa:gc)
+  #;(run-demod "pure" pure:gc)
+  #;(run-demod "0cfa" 0cfa:gc)
   #;(run-demod "const" const:gc))
 
 
