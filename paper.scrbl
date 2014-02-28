@@ -83,6 +83,10 @@ subsection elimination strategies
 Based on the observation that 75% of top-level forms define a single identifier by a simple expression--an expression that won't diverge or exhibit any other side effects--and the fact that references to top-level values are explicit, we calculate the transive closure of top-level forms related by top-level reference and seeded by complex (as opposed to simple) expressions.
 This strategy is sound...
 
+we get the top-level expressions that we need and then we determine which top-level identifiers we need based on the definitions of those expressions. suppose we have def-values x y e and x is referenced by main. then we keep the buckets for x and y. we don't need to worry about expressions that reassign y; its inclusion is benign.
+
+we might be too (too) conservative with this since top-level references might occur in operand position but we include all references of the definition body.
+
 too conservative?
 higher-order control flow problem
 
