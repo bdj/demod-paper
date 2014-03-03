@@ -35,10 +35,12 @@
 				  gc-toplevel)))))))))))
 
 (module+ main
-  (require (prefix-in test: "test.rkt")
-	   (prefix-in flow: "flow.rkt")
+  (require #;(prefix-in test: "test.rkt")
+	   #;(prefix-in flow: "flow.rkt")
+           (prefix-in reach: "reach.rkt")
+           (prefix-in pure: "pure.rkt")
 	   (prefix-in 0cfa: "0cfa.rkt")
-	   (prefix-in const: "const.rkt"))
+	   #;(prefix-in const: "const.rkt"))
 
   (define none:gc (lambda (zo) zo))
 
