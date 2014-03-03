@@ -1,4 +1,4 @@
-#lang scribble/sigplan
+#lang scribble/sigplan @10pt @preprint
 @require[scribble/manual]
 
 @title{Enabling Optimizations through Demodularization}
@@ -52,23 +52,311 @@ program becomes XXX KB after dead-code elimination.
 
 @section{An Example}
 
+Demodularization enables whole-program optimizations and eliminates module loading overhead while maintaining the runtime meaning of a program.
+To understand how demodularization preserves the runtime meaning of a program, we first need to understand the runtime meaning of a modular Racket program.
+Consider the program in Figure~\ref{main-rkt}.
+
 @codeblock{
-  #lang racket/base
-  (require "queue.rkt")
-  (with-queue (1 2 3 4 5 6)
-    (enqueue 4)
-    (displayln (dequeue))
-    (displayln (dequeue)))
+#lang racket/base
+(require "queue.rkt")
+
+(with-queue (1 2 3 4 5 6)
+  (enqueue 4)
+  (displayln (dequeue))
+  (displayln (dequeue)))
+}
+This program imports a queue library through a \scheme{require} expression and then uses the library to do some queue operations.
+Figures~\ref{queue-rkt}, \ref{long-queue-rkt}, and \ref{short-queue-rkt} contain the three modules that make up the queue library.
+The library consists of a macro and two queue implementations, where the macro decides which implementation to use based on the length of the initial queue at compile time.
+
+@codeblock{
+#lang racket/base
+(require (for-syntax racket/base
+                     racket/syntax)
+         "short-queue.rkt"
+         "long-queue.rkt")
+
+(define-syntax (with-queue stx)
+  (syntax-case stx ()
+    [(with-queue (v ...) e ...)
+     (begin
+       (define type 
+         (if (> (length (syntax->list #'(v ...))) 5) 
+	     'long 
+             'short))
+       (define make-queue 
+         (format-id #'stx "make-~a-queue" type))
+       (define enqueue (format-id #'stx "~a-enqueue" type))
+       (define dequeue (format-id #'stx "~a-dequeue" type))
+       #`(let ([q (#,make-queue v ...)])
+           (define (#,(datum->syntax stx 'dequeue)) 
+             (#,dequeue q))
+           (define (#,(datum->syntax stx 'enqueue) x)
+             (#,enqueue q x))
+           e ...))]))
+
+(provide with-queue)
 }
 
-@section{Phased Module System}
+@codeblock{
+#lang racket/base
+(define (make-long-queue . vs)
+  .... make-vector ....)
+
+(define (long-enqueue q v)
+  .... vector-set! ....)
+
+(define (long-dequeue q)
+  .... vector-ref ....)
+
+(provide (all-defined-out))
+}
+@codeblock{
+#lang racket/base
+(define (make-short-queue . vs)
+  .... list ....)
+
+(define (short-enqueue q v)
+  .... cons ....)
+
+(define (short-dequeue q)
+  .... list-ref ....)
+
+(provide (all-defined-out))
+}
+
+The Racket runtime evaluates this program by compiling and then running the main module.
+Whenever the runtime encounters a \scheme{require} expression during compilation, it either loads an existing compiled version of the required module or compiles the required module.
+Whenever the runtime encounters a macro expression during compilation, it expands the macro.
+In this example, the runtime begins to compile \texttt{main.rkt} and loads the compiled version of \scheme{racket/base}. 
+Next, it encounters the \scheme{require} expression for \texttt{queue.rkt} and compiles it.
+Compilation of \texttt{queue.rkt} triggers compilation of both \texttt{short-queue.rkt} and \texttt{long-queue.rkt}. 
+
+After finishing \texttt{queue.rkt}, the runtime returns to \texttt{main.rkt} and expands the \scheme{with-queue} macro.
+The \scheme{with-queue} macro checks the length of the initial queue, which in this case is six, and chooses to use the \scheme{long-queue} implementation.
+The macro expands into a \scheme{let} expression that binds the identifier \scheme{q} to the initial queue, along with internal definitions of \scheme{enqueue} and \scheme{dequeue} that use the \scheme{long-queue} implementations.
+Figure~\ref{main-expanded-rkt} shows what \texttt{main.rkt} looks like after expansion.
+
+@codeblock{
+(module main racket/base
+  (#%module-begin
+   (require "queue.rkt")
+   (let ((q (make-long-queue 1 2 3 4 5 6)))
+     (define (dequeue) (long-dequeue q))
+     (define (enqueue x) (long-enqueue q x))
+     (enqueue 4)
+     (displayln (dequeue))
+     (displayln (dequeue)))))
+}
+
+After compiling the whole program, the Racket runtime evaluates the program by loading and executing the compiled main module.
+As is the case with compilation, evaluation also follows the \scheme{require} expressions and runs required modules as it encounters them.
+In this example, the runtime evaluates \texttt{main.rkt} and encounters the \scheme{require} expression for \texttt{queue.rkt}.
+It then follows the \scheme{require}s for \texttt{short-queue.rkt} and \texttt{long-queue.rkt} and installs the definitions that those modules provide.
+When evaluation returns to \texttt{queue.rkt}, nothing else happens because macros are only needed at compile time.
+Finally, evaluation returns to \texttt{main.rkt} and the runtime evaluates the rest of the program.
+
+A demodularized version of this program should contain all code that ran while evaluating the modular program, minus the module loading steps.
+The demodularization algorithm starts with the compiled versions of all of the modules for the program, and then traces the \scheme{require} expressions and includes all runtime code into a single module in the order it encounters the code.
+Figure~\ref{main-demod-rkt} shows what the single module looks like after running the demodularization algorithm on it.
+There are no require statements and the macro definition is gone, but the all the code that ran during the evaluation of the modular version is there in the same order as before.
+
+@codeblock{
+(module main racket/base
+  (#%module-begin
+   (define (make-short-queue . vs)
+    .... list ....)
+
+   (define (short-enqueue q v)
+    .... cons ....)
+
+   (define (short-dequeue q)
+    .... list-ref ....)
+
+   (define (make-long-queue . vs)
+    .... make-vector ....)
+
+   (define (long-enqueue q v)
+    .... vector-set! ....)
+
+   (define (long-dequeue q)
+    .... vector-ref ....)
+
+   (let ((q (make-long-queue 1 2 3 4 5 6)))
+     (define (dequeue) (long-dequeue q))
+     (define (enqueue x) (long-enqueue q x))
+     (enqueue 4)
+     (displayln (dequeue))
+     (displayln (dequeue)))))
+}
 
 
-@section{Demodularization}
+This example is rather simple because it only uses a single macro, but in practice, Racket programs use many macros, even macros that use other macros in their implementations, creating a language tower.
+The demodularization algorithm takes this into account by only gathering runtime code while tracing through \scheme{require} expressions.
+The details about how this works is further explained in the operational semantics model in Chapter 3.
 
-@section{Dead-code Elimination}
+With all of the code in a single module, it is easy to see how standard optimizations such as inlining and dead code elminiation can reduce the module to the code in Figure~\ref{main-demod-opt-rkt}.
+@codeblock{
+(module main racket/base
+  (#%module-begin
+   (let ((q (.... make-vector .... 1 2 3 4 5 6 ....)))
+     (.... vector-set .... 4 ....)
+     (displayln (.... vector-ref ....))
+     (displayln (.... vector-ref ....)))))
+}
+In this simple example, with constant folding this progam could be optimized even more, but even in programs with dynamic inputs, demodularization enables many optimizations that aren't possible when the program is separated into modules.
+
+@section{Model}
+
+We can understand the specifics of demodularization by describing it as an algorithm for a simple language with a well defined semantics.
+The \emph{mod} language (Figure~\ref{source-lang}) contains only the features necessary to write modular programs where it is possible to observe the effects of module evaluation order.
+
+\begin{figure}[h]
+\includegraphics{source}
+\caption{\emph{mod} language grammar}
+\label{source-lang}
+\end{figure}
+
+A program in \emph{mod} consists of a list of modules that can refer to each other.
+Each module has a name, any number of imports, any number of definitions, and sequenced code expressions. 
+All definitions in a module are exposed as exports to other modules, but to use definitions from another module, the program must import it through a \scheme{require} expression.
+Both \scheme{require} and \scheme{define} expressions have phase annotations; this simulates the interactions between modules in a language with macros and a language tower without requiring a model of macro expansion.
+The language includes variable references, numbers, addition, and mutation.
+Mutation makes module evaluation order observable, and addition represents the work that a module does.
+In addition to numbers and variables, there are two special forms of values and references that model the interaction of macros with the module system.
+A \scheme{quote} expression is like a reference to syntax at runtime.
+A \scheme{ref} expression is like a macro that can only do one thing: refer to a variable at a phase.
+
+The \emph{mod} language exposes phases as an integral part of the language, while languages like Racket keep phases obscured from the end user even though it uses phases during compiling and evaluating a program.
+So, what is a phase?
+In the discussion of the example program in section XXX, we used the terminology of runtime and compile-time.
+Phases are just numerical designations for these terms, where runtime is phase 0 and compile-time is phase 1.
+The reason phases are numbers is because phases exist outside of the range of 0 to 1.
+Given that phase 1 is the compile-time for phase 0, we can extend this idea so that phase 2 is the compile-time for phase 1.
+Conversely, compile-time code generates code for the phase below it, so it can refer to bindings at negative phases.
+(Talk about relative phases)
+Phases allow programmers to build syntactic abstractions that use other syntactic abstractions, creating a tower of intermediate languages.
+The \emph{mod} language does not allow programmers to create language towers, but evaluating a \emph{mod} program uses the same mechanisms as evaluating a Racket program.
+
+We have to compile \emph{mod} programs before demodularizing them, just like in the Racket implementation.
+In Racket, compiling expands all macros in a program and changes definitions and variable references to refer to memory locations.
+In \emph{mod}, compiling eliminates \scheme{ref} expressions, turns definitions into \scheme{set!} expressions, changes variable references to include module information, and sorts code into phases.
+Compilation in both cases still leaves behind a relatively high-level language, but the language is free of syntactic extensions.
+This is important for demodularization because otherwise macro expansion would have to be part of the algorithm, which would complicate it and possibly duplicate work.
+The grammar in Figure~\ref{compiled-lang} specifies the compiled language for \emph{mod}.
+
+@image{compiled-lang.pdf}
+
+\begin{figure}[h]
+\includegraphics{compiled-lang}
+\caption{compiled language grammar}
+\label{compiled-lang}
+\end{figure}
+
+We evaluate the compiled language using a small-step reduction semantics. 
+Because the reduction rules are syntactic, we extend the compiled language further with evaluation contexts, a heap representation, and a stack representation to keep track of the order to instantiate modules.
+These extensions are in Figure~\ref{compiled-eval-lang}.
+An expression of the form:
+\setspecialsymbol{sigma}{$\sigma$}
+\begin{schemedisplay}
+(sigma / (mod ...) / ((id phase) ...)  / ((id phase) ...))
+\end{schemedisplay}
+represents the state of the machine during evaluation.
+$\sigma$ represents the heap of the program, and when evaluation finishes represents the output of the program.
+The list of modules is the code of program in the compiled language.
+The first list of \scheme{(id phase)} pairs is the list of modules to evaluate, and the second list is the modules that have already been evaluated.
+
+\begin{figure}[h]
+\includegraphics{compiled-eval-lang}
+\caption{extensions to compiled language grammar}
+\label{compiled-eval-lang}
+\end{figure}
+
+The reduction rules in Figure~\ref{eval-reduction} evaluate a compiled program that starts with an empty heap, the program code, a stack that contains the identifier of the main module at phase 0, and an empty completed module list. 
+
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{eval-reduction}
+\caption{modular evaluation}
+\label{eval-reduction}
+\end{figure}
+
+The \emph{module require} rule matches a program with a \scheme{require} expression in the module at the top of the evaluation stack and evaluates it by removing the \scheme{require} expression from the module and pushing the required module onto the evaluation stack with the phase shifted appropriately.
+The current module is still on the stack and will continue evaluating after the required module is done evaluating.
+The subsequent rules all apply only when the phase relative to the main module is zero.
+The \emph{var ref} rule looks up a variable in the heap and replaces the variable with its current value.
+The \emph{add} rule replaces an addition expression of numbers with the result of computing their sum.
+The \emph{set!} rule installs a value for a variable into the heap and reduces to the value.
+When an expression is a value, the \emph{expression done} rule matches and removes the expression from the module.
+When there are no more expressions left in a module, the \emph{module done} rule applies by removing the module from the program and placing a reference to it in the list of finished modules.
+The \emph{module done already} rule applies when the current module on the stack is in the finished list, so that modules are not evaluated multiple times. 
+
+Figure~\ref{demod-redex} shows the demodularization algorithm for the compiled language.
+\begin{figure}[h]
+\includegraphics[width=\textwidth]{demod-redex}
+\caption{Demodularization algorithm}
+\label{demod-redex}
+\end{figure}
 
 @section{Implementation}
 
-@section{Results}
+The demodularization algorithm for the Racket module system operates on Racket bytecode. 
+Racket's bytecode format is one step removed from the fully-expanded kernel language: instead of identifiers for bindings, it uses locations.
+For toplevel bindings, these locations point to memory allocated for each module known as the module's prefix.
+So, in \texttt{long-queue.rkt}, \scheme{make-long-queue} would be in prefix location 0 and \scheme{long-enqueue} would be in prefix location 1, and all the references to \scheme{make-long-queue} and \scheme{long-enqueue} are replaced with references to 0 and 1.
+Like in the model, the algorithm combines all phase 0 code into a single module, but since the references are locations instead of identifiers, the locations of different modules overlap.
+We solve this by extending the prefix of the main module to have locations for the required module's toplevel identifiers, and then adjusting the toplevel references in the required module to those new locations. 
 
+After combining all the code for a program into a single module, we want to optimize it.
+The existing optimizations for Racket operate on an intermediate form that is part way between fully-expanded code and bytecode. 
+Therefore, to hook into the existing optimizations, we decompile the bytecode of the demodularized program into the intermediate form and then run it through the optimizer to produce bytecode once more.
+
+Racket provides features that treat modules as first-class objects during runtime. 
+For example, programs can load and evaluate modules at runtime through \scheme{dynamic-require}. 
+These features can work with demodularization, but the onus is on the programmer to make sure to use the features in particular ways.
+The main restriction is that the program cannot share a module that is part of the demodularized program and also part of a dynamically required module. 
+This restriction may seem easy to follow in theory, but in practice it is hard because most modules rely on built-in Racket libraries that will be in both the static and dynamic parts of the program.
+
+@section{Evaluation}
+
+We tested our implementation of demodularization by selecting existing Racket programs and measuring their execution time before and after demodularization.
+We also measured the memory usage and compiled bytecode size of the programs.
+We ran the benchmarks on an Intel Core 2 Quad machine running Ubuntu and ran each program X times.
+We expect programs to perform better based on how modular the program is, which we measure by counting the number of modules in a program's require graph and how many cross module references occur in the program.
+
+Figure XXX shows the results of running this experiment on XXX Racket programs. 
+On one end of the spectrum, there are programs like XXX which are already basically single module programs, so demodularization does little besides rerun the optimizer on the program. Running the optimizer again may have positive or negative effects on performance, it may unroll loops and inline definitions more aggressively the second time, but some of these ``optimizations" may hurt performance.
+On the other end of the spectrum, highly modular programs like XXX perform much better after demodularization.
+We expect performance to increase at a linear or even superlinear pace as modularity increases because of the extra information available to the optimizer.
+
+This experiment uses only the existing Racket optimizations, which are intra-module optimizations.
+Certain optimizations that are not worthwhile to do at the intra-module level have larger payoffs when applied to whole programs. 
+With demodularization, we anticipate that new whole-program optimizations enabled by demodularization will increase performance even more.
+
+@section{Related Work}
+Prior work on whole-program optimization has come in two flavors, depending on how much access to the source code the optimizer has. The first approach assumes full access to the source code and is based on inlining. The second approach only has access to compiled modules and is based on combining modules.
+
+The first approach is based on selectively inlining code across module boundaries because it has full access to the source code of the program \cite{258960,Chambers96whole-programoptimization}. Most of the focus of this approach is finding appropriate heuristics to inline certain functions without ballooning the size of the program and making sure the program still produces the same results. Resulting programs are not completely demodularized; they still have some calls to other modules. Specifically, Chambers et al. \cite{Chambers96whole-programoptimization} show how this approach applies to object-oriented languages like C++ and Java, where they are able to exploit properties of the class systems to choose what to inline. Blume and Appel \cite{258960} showed how to deal with inlining in the presence of higher order functions, to make sure the semantics of the program didn't change due to inlining. Their approach led to performance increases of around 8\%.
+
+The second approach is taking already compiled modules, combining them into a single module, and optimizing the single module at link time \cite{sutter,727617}. Most of the work done with this approach optimized at the assembly code level, but because they were able to view the whole program, the performance increases were still valuable. 
+The link-time optimization system by Sutter et al. \cite{sutter} achieves a 19\% speedup on C programs.
+One of the reasons for starting with compiled modules is so that programs using multiple languages can be optimized in a common language, like the work done by Debray et al. \cite{727617} to combine a program written in both Scheme and Fortran. The main problem with this approach is that the common language has less information for optimization than the source code had. 
+These approaches are similar to demodularization, but the operate at a lower level and work on languages without phased module systems.
+
+@section{Conclusion}
+
+Demodularization is a useful optimization for deploying modular programs. 
+A programmer can write a modular program and get the benefits of separate compilation while devloping the program, and then get additional speedups by running the demodularizer on the completed program.
+Demodularization also enables new optimizations that are not feasible to implement for modular programs.
+Without module boundaries, inter-procedural analysis is much easier and worthwhile.
+Also, dead code elmination works much better because the whole program is visible, while in a modular program, only dead code that is private to the module can be eliminated.
+
+In the future, we would like to implement an aggressive dead code elimination algorithm for Racket.
+We implemented a naive one that does not respect side effects, but shows the potential gains from this optimization; it is able to shrink Racket binaries down from about 2MB to about 100KB.
+This promising result implies that other low-hanging optimizations should be possible on demodularized programs that can increase performance.
+
+
+@section{Notes}
+
+We need to explain that phased module systems make macros work, but our system doesn't have macros because it's not the focus. We can talk about how macros are gone in compiled code though.
+
+Talk about how to handle name collisions between modules.

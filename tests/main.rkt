@@ -26,10 +26,10 @@
 	    (printf "directory \"~a\" already exists; skipping\n" suite-path)
 	    (begin
 	      (make-directory suite-path)
-	      (for ([test-filename (in-list (directory-list (build-path "src" suite-name)))])
+              (for ([test-filename (in-list (directory-list (build-path "src" suite-name)))])
 		(when (rkt-path? test-filename)
 		  (printf "processing \"~a\"\n" (build-path "src" suite-name test-filename))
-		  (parameterize ([compile-context-preservation-enabled #t])
+                  (parameterize ([compile-context-preservation-enabled #t])
 		    (demodularize (build-path "src" suite-name test-filename)
 				  (build-path method-name suite-name (rkt->zo-path test-filename))
 				  gc-toplevel)))))))))))
@@ -44,9 +44,9 @@
 
 
   (run-demod "none" none:gc)
-  (run-demod "test" test:gc)
-  (run-demod "flow" flow:gc)
-  (run-demod "0cfa" 0cfa:gc)
-  (run-demod "const" const:gc))
+  #;(run-demod "test" test:gc)
+  #;(run-demod "flow" flow:gc)
+  #;(run-demod "0cfa" 0cfa:gc)
+  #;(run-demod "const" const:gc))
 
 
