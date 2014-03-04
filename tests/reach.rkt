@@ -70,7 +70,7 @@
 				    [(references assigns) (gather-info rhs i references assigns)])
 			 #;(displayln "references")
 			 #;(displayln (map ->name (set->list (hash-ref references i (seteqv)))))
-			 (values (set-add eval-locs i) defines references assigns))]
+			 (values eval-locs defines references assigns))]
 		       
 		      [form
 		       #;(displayln i)
