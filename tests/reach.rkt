@@ -19,6 +19,10 @@
 	[(application (primval id) rands)
 	 (and (primitive-pure? id)
 	      (andmap simple? rands))]
+	[(branch test then else)
+	 (and (simple? test)
+	      (simple? then)
+	      (simple? else))]
 	[_
 	 #f])))
 
