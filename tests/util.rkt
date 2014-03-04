@@ -1,11 +1,12 @@
 #lang racket/base
-(require racket/match
+(require racket/list
+	 racket/match
 	 racket/set
 	 compiler/zo-structs)
 
 (provide zo-map
 	 zo-fold
-	 transitive-closure
+	 subsequence
 	 current-context)
 
 (define current-context (make-parameter '()))
@@ -107,13 +108,17 @@
       zo))
   (make-reader-graph (apply (inner (hasheq)) zo args)))
 
-(define (transitive-closure seed relation)
-  (let ([empty-set (set-clear seed)])
-    (define (inner x seen)
-      (if (set-member? seen x)
-        seen
-        (let ([seen (set-add seen x)])
-          (foldl inner seen (set->list (hash-ref relation x empty-set))))))
-    (foldl inner empty-set (set->list seed))))
-
+(define (subsequence xs is)
+  (define (inner xs i j js)
+    (if (= i j)
+      (match xs
+	[(cons x xs)
+	 (if (empty? js)
+	   (list x)
+	   (cons x (inner xs (add1 i) (first js) (rest js))))]
+	[(list)
+	 (error 'subsequence "overrun")])
+      (inner (rest xs) (add1 i) j js)))
+  (inner xs 0 (first is) (rest is)))
+       
 ; takes a procedure which matches zo structs of interest
