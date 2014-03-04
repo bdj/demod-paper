@@ -328,6 +328,8 @@ this probably covers a vast majority of the top-level definitions
 
 we should also consider code size as well as the proportion of top-level definitions eliminated.
 
+We can mark primval as pure or impure, but that is really too coarse. A paremeter can be invoked as a procedure with an argument, and such an operation is impure, but when invoked without an argument is pure. We really need to keep track of (1) whether the primitive value is a procedure and, if so, (2) its purity for different arities. We can parition the arities into known pure and impure (and be conservative with the pure set), and in many cases the number of arguments will be statically known. If the number of arguments is not statically known, as in the case of apply-values, we take the minimum purity level of all arities. 
+
 @section{Implementation}
 
 The demodularization algorithm for the Racket module system operates on Racket bytecode. 
