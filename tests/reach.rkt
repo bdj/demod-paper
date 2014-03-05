@@ -8,11 +8,16 @@
 
 (provide gc)
 
+(define (displayln/limit n x)
+  (let ([s (format "~a" x)])
+    (displayln (substring s 0 (min (string-length s) n)))))
+
 (define (simple? zo)
   (or (not (zo? zo))
+      (case-lam? zo)
       (closure? zo)
       (lam? zo)
-      (case-lam? zo)
+      (localref? zo)
       (primval? zo)
       (toplevel? zo)
       (match zo
@@ -23,8 +28,19 @@
 	 (and (simple? test)
 	      (simple? then)
 	      (simple? else))]
+	[(install-value count pos boxes? rhs body)
+	 (and (simple? rhs)
+	      (simple? body))]
+	[(let-one rhs body type unused?)
+	 (and (simple? rhs)
+	      (simple? body))]
+	[(let-void count boxes? body)
+	 (simple? body)]
+	[(seq forms)
+	 (andmap simple? forms)]
 	[_
-	 #f])))
+	 #f])
+      (begin (displayln/limit 112 zo) #f)))
 
 (define (gc zo)
   (define (update-map map x . ys)
@@ -70,7 +86,7 @@
 				    [(references assigns) (gather-info rhs i references assigns)])
 			 #;(displayln "references")
 			 #;(displayln (map ->name (set->list (hash-ref references i (seteqv)))))
-			 (values eval-locs defines references assigns))]
+			 (values (set-add eval-locs i) defines references assigns))]
 		       
 		      [form
 		       #;(displayln i)
