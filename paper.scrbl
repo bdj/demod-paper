@@ -334,6 +334,47 @@ we should also consider code size as well as the proportion of top-level definit
 
 We can mark primval as pure or impure, but that is really too coarse. A paremeter can be invoked as a procedure with an argument, and such an operation is impure, but when invoked without an argument is pure. We really need to keep track of (1) whether the primitive value is a procedure and, if so, (2) its purity for different arities. We can parition the arities into known pure and impure (and be conservative with the pure set), and in many cases the number of arguments will be statically known. If the number of arguments is not statically known, as in the case of apply-values, we take the minimum purity level of all arities. 
 
+A demodularized program consists of a prefix which serve as references to top-level definitions and a sequence of top-level forms.
+Top-level definitions may be definitions put by the programmer or local procedures lifted from an enclosing lambda.
+A form at the top-level may be a require of a racket kernel language module, a definition, or an expression.
+
+The demodularization process may include modules which aren't actually used.
+These modules would be culled, but are included as part of the base language.
+Therefore, a demodularized program contains a vast amount of dead code.
+
+We distinguish between [emph]simple[] and non-[emph]simple[] expressions.
+A simple expression is one which evaluation will not exhibit side effects, including non-termination.
+We cannot decide whether an expression is simple in general, so we consider a few different approximations.
+
+We then consider the non-simple expressions as a root set and calculate the transitive closure by reference of this set.
+This is possible since top-level references are distinguished from local references.
+This sidesteps the control-flow problem at the expense of a great reduction in precision.
+
+First approximation
+
+An expression is simple if it is a syntactic value, a top-level reference, a primitive value, or a lambda expression.
+A primitive value is one of the approximately 1200 values provided by the virtual machine, a vast majority of which are procedures.
+A lambda expression includes case-lambda.
+The transitive closure of the root set induced by this definition includes 90% of top-level forms; the calculation is hardly worth the effort.
+
+Second approximation
+
+For the second approximation, we once again distinguish simple expressions but broaden our definition of such.
+We observe that many of the compiler-generated top-level definitions are the result of a primitive value application.
+We classify primitive values according to their purity.
+The purity of some primitive values, such as those which expose parameters, is sensitive to the number of arguments provided.
+Thus, our classification must take all the arities of the procedure into account.
+(We also assume that no primitive procedure will ever diverge.)
+The extended definition of simple expressions includes branch, begin, install-value, let-void, let-one, and application where the operator is a primitive procedure and all the operands are simple.
+This method includes 60% of top-level forms.
+
+This result is a great improvement over the previous, but the elimination produced by manual inspection is over 90%.
+We identify the modes of reasoning humans employ when eliminating such a large amount, and ...
+We could easily choose a strategy which isn't sound, but is safe for the code admitted to the base language.
+
+put in a table of size results
+
+
 @section{Implementation}
 
 The demodularization algorithm for the Racket module system operates on Racket bytecode. 
