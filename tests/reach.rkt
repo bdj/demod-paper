@@ -40,7 +40,7 @@
 	 (andmap simple? forms)]
 	[_
 	 #f])
-      (begin (displayln/limit 112 zo) #f)))
+      (begin #;(displayln/limit 112 zo) #f)))
 
 (define (gc zo)
   (define (update-map map x . ys)
