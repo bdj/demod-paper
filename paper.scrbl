@@ -53,6 +53,10 @@ program after demodularization. We do a dead-code elimination pass on the
 resulting program to make analysis and optimization more tractable. Our example
 program becomes XXX KB after dead-code elimination.
 
+The declared language of a Racket module is itself a module with its own dependency graph, and even the ostensibly compact@racket[racket/base] language includes a significant amount of code in its graph.
+Much of this code is unreferenced by the language-declaring module, however, so it can in principle be removed from the demodularized program.
+
+
 @section{An Example}
 
 Demodularization enables whole-program optimizations and eliminates module loading overhead while maintaining the runtime meaning of a program.
