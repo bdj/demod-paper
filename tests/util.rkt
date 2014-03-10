@@ -101,12 +101,32 @@
       (if (hash-has-key? seen zo)
         (hash-ref seen zo)
         (let ([seen (hash-set seen zo (make-placeholder #f))])
-          (let ([zo* (parameterize ([current-context (cons zo (current-context))])
-		       (apply (f (inner seen)) zo args))])
+          (let ([zo* (apply (f (inner seen)) zo args)])
             (placeholder-set! (hash-ref seen zo) zo*)
             zo*)))
       zo))
   (make-reader-graph (apply (inner (hasheq)) zo args)))
+
+; selective map: only specify which forms you want to change
+; - should preserve cycles and "diamond" sharing
+; - pass a procedure to recur?
+#|
+(zo-map
+ (lambda (inner)
+   (lambda (zo env)
+     (match zo
+       [(toplevel depth pos const? ready?)
+	(toplevel 0 pos const? ready?)]
+       [(localref depth ...)
+	(localref (env-lookup env depth) ...)]
+       [(application rator rands)
+	(let ([env (env-append (map fresh rands) env)])
+	  (application (inner rator env)
+		       (map (lambda (rand) (inner rand env)) rands)))]
+       [(let-one rhs body)
+	(let ([env (env-cons (fresh) env)])
+	  (let-one (inner rhs env) (inner body env)))]
+      |#
 
 (define (subsequence xs is)
   (define (inner xs i j js)

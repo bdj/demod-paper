@@ -16,7 +16,9 @@
 
 (define (call-with-new-directory path f)
   (if (directory-exists? path)
-    (printf "directory \"~a\" already exists; skipping\n" path)
+    (begin
+      (printf "directory \"~a\" already exists; skipping\n" path)
+      #f)
     (begin
       (make-directory path)
       (f path))))
@@ -39,19 +41,35 @@
 				gc-toplevel)))))))))))
 
 (module+ main
-  (require #;(prefix-in test: "test.rkt")
+  (require racket/list
+	   racket/match
+	   compiler/zo-structs
+	   #;(prefix-in test: "test.rkt")
 	   #;(prefix-in flow: "flow.rkt")
            (prefix-in reach: "reach.rkt")
            #;(prefix-in pure: "pure.rkt")
 	   #;(prefix-in 0cfa: "0cfa.rkt")
 	   #;(prefix-in const: "const.rkt"))
 
+  (define (run-demod* name gc)
+    (let ([stats empty])
+      (void
+       (and (run-demod name (lambda (zo)
+			      (let ([zo (gc zo)])
+				(match-let ([(compilation-top max-let-depth prefix (splice forms)) zo])
+				  (set! stats (cons (length forms) stats)))
+				zo)))
+	    (begin
+	      (displayln name)
+	      (displayln stats))))))
+	 
   (define none:gc (lambda (zo) zo))
 
 
-  (run-demod "none" none:gc)
-  #;(run-demod "test" test:gc)
-  #;(run-demod "flow" flow:gc)
-  (run-demod "reach" reach:gc))
+  (run-demod* "none" none:gc)
+  #;(run-demod* "test" test:gc)
+  #;(run-demod* "flow" flow:gc)
+  (run-demod* "reach" reach:gc))
+
 
 
