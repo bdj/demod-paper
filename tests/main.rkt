@@ -16,9 +16,7 @@
 
 (define (call-with-new-directory path f)
   (if (directory-exists? path)
-    (begin
-      (printf "directory \"~a\" already exists; skipping\n" path)
-      #f)
+    (printf "directory \"~a\" already exists; skipping\n" path)
     (begin
       (make-directory path)
       (f path))))
@@ -52,17 +50,19 @@
 	   #;(prefix-in const: "const.rkt"))
 
   (define (run-demod* name gc)
-    (let ([stats empty])
-      (void
-       (and (run-demod name (lambda (zo)
-			      (let ([zo (gc zo)])
-				(match-let ([(compilation-top max-let-depth prefix (splice forms)) zo])
-				  (set! stats (cons (length forms) stats)))
-				zo)))
-	    (begin
-	      (displayln name)
-	      (displayln stats))))))
-	 
+    (run-demod name gc)
+    (displayln name)
+    (for ([suite-pc (in-directory name)])
+      (displayln (path->string suite-pc))
+      (for ([file-path (in-directory (build-path name suite-pc))])
+        (let ([file-path (build-path name suite-pc file-pc)])
+	  (printf "~a\t~a\t~a\n"
+	          (path->string file-pc)
+		  (file-size file-path)
+		  (match-let ([(compilation-top max-let-depth prefix (splice forms))
+		               (with-input-from-file file-path zo-parse)])
+                    (length forms)))))))
+
   (define none:gc (lambda (zo) zo))
 
 
