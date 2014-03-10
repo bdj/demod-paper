@@ -53,9 +53,9 @@ program after demodularization. We do a dead-code elimination pass on the
 resulting program to make analysis and optimization more tractable. Our example
 program becomes XXX KB after dead-code elimination.
 
-The declared language of a Racket module is itself a module with its own dependency graph, and even the ostensibly compact@racket[racket/base] language includes a significant amount of code in its graph.
-Much of this code is unreferenced by the language-declaring module, however, so it can in principle be removed from the demodularized program.
-
+The declared language of a Racket module is itself a module with its own dependency graph, and even the ostensibly compact @racket[racket/base] language includes a significant amount of code in its graph.
+Typically, much of this code is unreferenced by the language-declaring module, however, so it can in principle be removed from the demodularized program.
+We explore the effectiveness of multiple elimination strategies for this ``dead code'' in Section~\ref{sec-dce}.
 
 @section{An Example}
 
@@ -303,6 +303,9 @@ Figure~\ref{demod-redex} shows the demodularization algorithm for the compiled l
 \caption{Demodularization algorithm}
 \label{demod-redex}
 \end{figure}
+
+\subsection{Results}
+\label{sec-dce}
 
 After demodularization, a program is essentially a prefix--a mutable array with a slot for each variable defined at the top level--and a sequence of top-level forms.
 These forms may be [racket]require[] forms which introduce bindings from a portion of Racket's kernel language, [racket]def-values[] forms which update slots in the prefix, and expressions which are wrapped in a [racket]print-values[] by the compiler.
