@@ -55,7 +55,7 @@
   (define none:gc (lambda (zo) zo))
 
 
-  (run-demod "none" none:gc)
+  #;(run-demod "none" none:gc)
   #;(run-demod "test" test:gc)
   #;(run-demod "flow" flow:gc)
   (run-demod "reach" reach:gc))

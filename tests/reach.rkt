@@ -55,11 +55,12 @@
 	 [(assign (toplevel depth pos const? ready?) rhs undef-ok?)
 	  (values references
 		  (update-map assigns i pos))]))
-     zo
-     references
-     assigns))
-  (match-let ([(compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice forms)) zo])
-    (define (->name toplevel) (with-handlers ([exn:fail? (lambda (e) 'lifted-local)]) (list-ref toplevels (toplevel-pos toplevel))))
+     zo references assigns))
+  (match-let ([(compilation-top max-let-depth prefix (splice forms)) zo])
+    (define ->name
+      (let ([toplevels (prefix-toplevels prefix)])
+	(lambda (toplevel)
+	  (with-handlers ([exn:fail? (lambda (e) 'lifted-local)]) (list-ref toplevels (toplevel-pos toplevel))))))
     (let-values ([(eval-locs defines references assigns)
 		  (for/fold ([eval-locs (seteqv)]
 			     [defines (hasheqv)]
@@ -69,6 +70,7 @@
 		       [i (in-naturals)])
 		    (match form
 		      [(def-values ids (? simple? rhs))
+		       #;(displayln (map toplevel-pos ids))
 		       #;(displayln i)
 		       #;(displayln "def-no-expr")
 		       #;(displayln (map ->name ids))
@@ -78,6 +80,7 @@
 			 #;(displayln (map ->name (set->list (hash-ref references i (seteqv)))))
 			 (values eval-locs defines references assigns))]
 		      [(def-values ids rhs)
+		       #;(displayln (map toplevel-pos ids))
 		       #;(displayln i)
 		       #;(displayln "def")
 		       #;(displayln (map ->name ids))
@@ -128,4 +131,7 @@
 	#;(displayln (apply set-union (map (lambda (i) (hash-ref defines i (seteqv))) (set->list form-indices))))
 	#;(for-each displayln (subsequence forms (sort (set->list form-indices) <)))
 	(printf "keeping ~a/~a (~a%) top-level forms\n" (set-count form-indices) (length forms) (exact->inexact (* 100 (/ (set-count form-indices) (length forms)))))
-	(compilation-top max-let-depth (prefix num-lifts toplevels stxs) (splice (subsequence forms (sort (set->list form-indices) <)))))))))
+	(let-values ([(prefix forms) (process prefix (subsequence forms (sort (set->list form-indices) <)))])
+	  (displayln prefix)
+	  #;(displayln forms)
+	  (compilation-top max-let-depth prefix (splice forms))))))))

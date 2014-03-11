@@ -7,9 +7,7 @@
 (provide zo-map
 	 zo-fold
 	 subsequence
-	 current-context)
-
-(define current-context (make-parameter '()))
+	 process)
 
 (define (foldl. f xs . accs)
   (match xs
@@ -27,7 +25,6 @@
     [(_ inner seen accs fields ... field)
      (match-let* ([(cons seen accs) (apply* list (apply inner fields seen accs))] ...)
        (apply inner field seen accs))]))
-
 
 (define (zo-fold f zo . units)
   (define (inner zo seen . accs)
@@ -88,57 +85,149 @@
 	  [(varref toplevel dummy)
 	   (fold/single inner seen accs toplevel dummy)]
 	  [(with-cont-mark key val body)
-	   (fold/single inner seen accs key val body)]
-
-))))
+	   (fold/single inner seen accs key val body)]))))
   (match-let ([(cons seen accs) (apply* list (apply inner zo (seteqv) units))])
     (apply values accs)))
 	  
+(define (default-map recur zo)
+  (match zo
+    [(application rator rands)
+     (application (recur rator) (map recur rands))]
+    [(apply-values proc args-expr)
+     (apply-values (recur proc) (recur args-expr))]
+    [(beg0 seq)
+     (beg0 (map recur seq))]
+    [(assign id rhs undef-ok?)
+     zo]
+    [(boxenv pos body)
+     zo]
+    [(branch test then else)
+     (branch (recur test) (recur then) (recur else))]
+    [(case-lam name clauses)
+     (case-lam name (map recur clauses))]
+    [(closure code gen-id)
+     (closure (recur code) gen-id)]
+    [(def-values ids rhs)
+     (def-values (map recur ids) (recur rhs))]
+    [(install-value count pos boxes? rhs body)
+     (install-value count pos boxes? (recur rhs) (recur body))]
+    [(lam name flags num-params param-types rest? closure-map
+	  closure-types toplevel-map max-let-depth body)
+     (lam name flags num-params param-types rest? closure-map
+	  closure-types toplevel-map max-let-depth (recur body))]
+    [(let-one rhs body type unused?)
+     (let-one (recur rhs) (recur body) type unused?)]
+    [(let-rec procs body)
+     (let-rec (map recur procs) (recur body))]
+    [(let-void count boxes? body)
+     (let-void count boxes? (recur body))]
+    [(localref unbox? pos clear? other-clears? type)
+     zo]
+    [(primval id)
+     zo]
+    [(req reqs dummy)
+     (req reqs (recur dummy))]
+    [(seq forms)
+     (seq (map recur forms))]
+    [(toplevel depth pos const? ready?)
+     zo]
+    [(topsyntax depth pos midpt)
+     zo]
+    [(varref toplevel dummy)
+     (varref (recur toplevel) (recur dummy))]
+    [(with-cont-mark key val body)
+     (with-cont-mark (recur key) (recur val) (recur body))]))
 
-(define (zo-map f zo . args)
-  (define ((inner seen) zo . args)
+(define (zo-map f zo)
+  (letrec ([inner (let ([seen (make-hasheq)])
+		    (lambda (zo)
+		      (if (zo? zo)
+			(if (hash-has-key? seen zo)
+			  (hash-ref seen zo)
+			  (begin
+			    (hash-set! seen zo (make-placeholder #f))
+			    (let ([zo* (with-handlers ([exn:misc:match? (lambda (e) (default-map inner zo))])
+					 ((f inner) zo))])
+			      (placeholder-set! (hash-ref seen zo) zo*)
+			      zo*)))
+			zo)))])
+    (make-reader-graph (inner zo))))
+
+#;(define (zo-map f zo)
+  (define ((inner seen) zo)
     (if (zo? zo)
       (if (hash-has-key? seen zo)
-        (hash-ref seen zo)
-        (let ([seen (hash-set seen zo (make-placeholder #f))])
-          (let ([zo* (apply (f (inner seen)) zo args)])
-            (placeholder-set! (hash-ref seen zo) zo*)
-            zo*)))
+	(hash-ref seen zo)
+	(let ([seen (hash-set seen zo (make-placeholder #f))])
+	  (let ([zo* (with-handlers ([exn:misc:match? (lambda (e) (default-map (inner seen) zo))])
+		       ((f (inner seen)) zo))])
+	    (placeholder-set! (hash-ref seen zo) zo*)
+	    zo*)))
       zo))
-  (make-reader-graph (apply (inner (hasheq)) zo args)))
+  (make-reader-graph ((inner (hasheq)) zo)))
 
-; selective map: only specify which forms you want to change
-; - should preserve cycles and "diamond" sharing
-; - pass a procedure to recur?
-#|
-(zo-map
- (lambda (inner)
-   (lambda (zo env)
-     (match zo
-       [(toplevel depth pos const? ready?)
-	(toplevel 0 pos const? ready?)]
-       [(localref depth ...)
-	(localref (env-lookup env depth) ...)]
-       [(application rator rands)
-	(let ([env (env-append (map fresh rands) env)])
-	  (application (inner rator env)
-		       (map (lambda (rand) (inner rand env)) rands)))]
-       [(let-one rhs body)
-	(let ([env (env-cons (fresh) env)])
-	  (let-one (inner rhs env) (inner body env)))]
-      |#
+; given a prefix, a list of top-level forms to include, return a compacted prefix and the list of toplevels
+; with rewritten toplevel references
+(define (process prefix* forms)
+  (match-let ([(prefix num-lifts toplevels stxs) prefix*])
+    (let ([num-toplevels (length toplevels)])
+      (let*-values ([(tls lls)
+		     (for/fold ([tls (seteqv)]
+				[lls (seteqv)])
+			 ([form (in-list forms)])
+		       (zo-fold
+			(lambda (zo tls lls)
+			  (match zo
+			    [(toplevel depth pos const? ready?)
+			     (if (< pos num-toplevels)
+				 (values (set-add tls pos) lls)
+				 (values tls (set-add lls pos)))]
+			    #;[(def-values ids rhs)
+			     (for/fold ([tls tls]
+					[lls lls])
+				 ([id (in-list ids)])
+			       (let ([pos (toplevel-pos id)])
+				 (if (< pos num-toplevels)
+				     (values (cons pos tls) lls)
+				     (values tls (cons pos lls)))))]))
+			form tls lls))]
+		    [(tls lls) (values (sort (set->list tls) <) (sort (set->list lls) <))])
+	(let*-values ([(tl-map j) (values (hasheqv 0 0) 1)]
+		      [(tl-map j) (for/fold ([tl-map tl-map]
+					     [j j])
+				      ([i (in-list tls)])
+				    (values (hash-set tl-map i j)
+					    (add1 j)))]
+		      [(tl-map j) (values tl-map (if (empty? stxs) j (add1 j)))]
+		      [(tl-map j) (for/fold ([tl-map tl-map]
+					     [j j])
+				      ([i (in-list lls)])
+				    (values (hash-set tl-map i j)
+					    (add1 j)))])
+	  (values prefix* #;(prefix (length lls) (subsequence toplevels tls) stxs)
+		  (map
+		   (lambda (form)
+		     (zo-map
+		      (lambda (recur)
+			(match-lambda))
+		      form))
+		   forms)))))))
 
 (define (subsequence xs is)
-  (define (inner xs i j js)
-    (if (= i j)
-      (match xs
-	[(cons x xs)
-	 (if (empty? js)
-	   (list x)
-	   (cons x (inner xs (add1 i) (first js) (rest js))))]
-	[(list)
-	 (error 'subsequence "overrun")])
-      (inner (rest xs) (add1 i) j js)))
-  (inner xs 0 (first is) (rest is)))
-       
-; takes a procedure which matches zo structs of interest
+  (define (inner xs* j is*)
+    (match is*
+      [(list)
+       (list)]
+      [(cons i is)
+       (match xs*
+	 [(list)
+	  (error 'subsequence "overrun")]
+	 [(cons x xs)
+	  (cond
+	   [(> j i)
+	    (error 'subsequence "not strictly monotonic")]
+	   [(= j i)
+	    (cons x (inner xs (add1 j) is))]
+	   [(< j i)
+	    (inner xs (add1 j) is*)])])]))
+  (inner xs 0 is))
