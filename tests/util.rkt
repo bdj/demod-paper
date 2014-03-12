@@ -181,15 +181,7 @@
 			    [(toplevel depth pos const? ready?)
 			     (if (< pos num-toplevels)
 				 (values (set-add tls pos) lls)
-				 (values tls (set-add lls pos)))]
-			    #;[(def-values ids rhs)
-			     (for/fold ([tls tls]
-					[lls lls])
-				 ([id (in-list ids)])
-			       (let ([pos (toplevel-pos id)])
-				 (if (< pos num-toplevels)
-				     (values (cons pos tls) lls)
-				     (values tls (cons pos lls)))))]))
+				 (values tls (set-add lls pos)))]))
 			form tls lls))]
 		    [(tls lls) (values (sort (set->list tls) <) (sort (set->list lls) <))])
 	(let*-values ([(tl-map j) (values (hasheqv 0 0) 1)]
@@ -204,12 +196,14 @@
 				      ([i (in-list lls)])
 				    (values (hash-set tl-map i j)
 					    (add1 j)))])
-	  (values prefix* #;(prefix (length lls) (subsequence toplevels tls) stxs)
+	  (values (prefix (length lls) (subsequence toplevels tls) stxs)
 		  (map
 		   (lambda (form)
 		     (zo-map
 		      (lambda (recur)
-			(match-lambda))
+			(match-lambda
+			  [(toplevel depth pos const? ready?)
+			   (toplevel depth (hash-ref tl-map pos) const? ready?)]))
 		      form))
 		   forms)))))))
 
